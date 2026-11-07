@@ -1,0 +1,9 @@
+[build]
+  # ไม่มีหน้าเว็บให้ build ตอนนี้ มีแค่ function
+  publish = "public"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  # ให้ไฟล์ข้อมูลหลักสูตรติดไปกับ function ตอน deploy
+  included_files = ["data/**"]
