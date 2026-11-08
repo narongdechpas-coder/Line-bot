@@ -4,7 +4,8 @@ import crypto from "node:crypto";
 import { handleWebhook, RESUME_KEYWORD, TEXT, GROUP_ID_COMMAND } from "../src/handler.js";
 import { verifySignature } from "../src/line.js";
 import { createStore, memoryKv } from "../src/store.js";
-import { createBot, FALLBACK_REPLY, MODEL } from "../src/bot.js";
+import { createBot, buildSystem, FALLBACK_REPLY, MODEL } from "../src/bot.js";
+import fs from "node:fs";
 
 const SECRET = "test-channel-secret";
 const sign = (body) => crypto.createHmac("sha256", SECRET).update(body).digest("base64");
@@ -245,4 +246,28 @@ test("กลุ่ม: ถูกเชิญแล้วบอก Group ID, ข�
 
   await send([groupEvent("message", { message: { type: "text", text: GROUP_ID_COMMAND } })]);
   assert.equal(replies.length, 2);
+});
+
+test("persona: ใส่ไว้ก่อนกติกา และกติกาบอกว่าชนะ persona", () => {
+  const [block] = buildSystem("COURSES", "ชื่อ: น้องทดสอบ");
+  const t = block.text;
+  assert.ok(t.indexOf("น้องทดสอบ") < t.indexOf("กติกาของระบบ"));
+  assert.ok(t.indexOf("กติกาของระบบ") < t.indexOf("COURSES"));
+  assert.match(t, /สำคัญกว่า persona/);
+});
+
+test("persona: ไฟล์ว่างหรือไม่มี ใช้ค่าเริ่มต้น และยังมีกติกาครบ", () => {
+  for (const p of [undefined, "", "   "]) {
+    const t = buildSystem("C", p)[0].text;
+    assert.match(t, /แอดมิน LINE OA/);
+    assert.match(t, /not_in_data/);
+  }
+});
+
+test("data/persona.md มีจริงและถูกส่งเข้า system prompt", async () => {
+  const persona = fs.readFileSync(new URL("../data/persona.md", import.meta.url), "utf8");
+  let sent;
+  const answer = createBot({ coursesText: "C", personaText: persona, client: { messages: { parse: async (p) => { sent = p; return { stop_reason: "end_turn", parsed_output: { reply: "r", status: "answered" } }; } } } });
+  await answer([], "q");
+  assert.ok(sent.system[0].text.includes("น้องคอร์ส"));
 });

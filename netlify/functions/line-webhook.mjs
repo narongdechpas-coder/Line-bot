@@ -9,16 +9,19 @@ import { createStore, netlifyKv } from "../../src/store.js";
 
 export const config = { path: "/webhook" };
 
-function loadCourses() {
+function readData(file, { required }) {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    path.join(process.cwd(), "data/courses.md"),
-    path.resolve(here, "../../data/courses.md"),
+    path.join(process.cwd(), "data", file),
+    path.resolve(here, "../../data", file),
   ];
   for (const p of candidates) {
     if (fs.existsSync(p)) return fs.readFileSync(p, "utf8");
   }
-  throw new Error(`ไม่พบ data/courses.md (ลองหาที่: ${candidates.join(", ")})`);
+  const msg = `ไม่พบ data/${file} (ลองหาที่: ${candidates.join(", ")})`;
+  if (required) throw new Error(msg);
+  console.warn(`${msg} จะใช้ persona ค่าเริ่มต้นแทน`);
+  return "";
 }
 
 // สร้างครั้งเดียวต่อ instance แล้วใช้ซ้ำ
@@ -34,7 +37,11 @@ async function getDeps() {
     adminGroupId: env.ADMIN_GROUP_ID || undefined,
     salt: env.HASH_SALT ?? "",
     line: createLineClient(env.LINE_CHANNEL_ACCESS_TOKEN),
-    answer: createBot({ apiKey: env.ANTHROPIC_API_KEY, coursesText: loadCourses() }),
+    answer: createBot({
+      apiKey: env.ANTHROPIC_API_KEY,
+      coursesText: readData("courses.md", { required: true }),
+      personaText: readData("persona.md", { required: false }),
+    }),
     store: createStore(await netlifyKv(), {
       historyTurns: Number(env.HISTORY_TURNS ?? 4),
       handoffMinutes: Number(env.HANDOFF_MINUTES ?? 60),
