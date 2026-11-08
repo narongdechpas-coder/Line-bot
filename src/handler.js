@@ -19,6 +19,8 @@ const ALERT_REASON = {
   not_in_data: "❓ บอทตอบไม่ได้ ข้อมูลไม่มีในไฟล์ (บอทยังตอบห้องนี้ต่อ)",
 };
 
+const msg = (deps, key) => deps.messages?.[key] ?? TEXT[key];
+
 export function formatAlert({ status, name, question, at }) {
   const time = new Date(at).toLocaleString("th-TH", {
     timeZone: "Asia/Bangkok",
@@ -28,7 +30,8 @@ export function formatAlert({ status, name, question, at }) {
   return `${ALERT_REASON[status]}\nชื่อ: ${name ?? "(ไม่ทราบชื่อ)"}\nข้อความ: ${question}\nเวลา: ${time}\n\nตอบได้ที่ OA Manager → Chat แล้วค้นจากชื่อนี้`;
 }
 
-// deps: { channelSecret, salt, line, answer, store, adminGroupId?, waitUntil?, now? }
+// deps: { channelSecret, salt, line, answer, store, messages?, adminGroupId?, waitUntil?, now? }
+// messages มาจากหัวข้อ "ข้อความตายตัว" ใน persona.md ถ้าไม่มี ใช้ TEXT ด้านบน
 export async function handleWebhook({ rawBody, signature }, deps) {
   if (!verifySignature(rawBody, signature, deps.channelSecret)) {
     return { status: 401, body: "invalid signature" };
@@ -74,13 +77,13 @@ async function handleUserEvent(event, deps) {
   const later = (p) => (deps.waitUntil ? deps.waitUntil(p) : p);
 
   if (event.type === "follow") {
-    await line.reply(event.replyToken, TEXT.welcome);
+    await line.reply(event.replyToken, msg(deps, "welcome"));
     return;
   }
   if (event.type !== "message") return;
 
   if (event.message?.type !== "text") {
-    await line.reply(event.replyToken, TEXT.nonText);
+    await line.reply(event.replyToken, msg(deps, "nonText"));
     return;
   }
 
@@ -90,7 +93,7 @@ async function handleUserEvent(event, deps) {
   if (await store.isHandoff(uid)) {
     if (text === RESUME_KEYWORD) {
       await store.clearHandoff(uid);
-      await line.reply(event.replyToken, TEXT.resumed);
+      await line.reply(event.replyToken, msg(deps, "resumed"));
       return;
     }
     await later(store.log({ uid, question: text, answer: null, status: "muted" }));

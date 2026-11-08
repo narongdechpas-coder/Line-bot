@@ -6,6 +6,7 @@ import { verifySignature } from "../src/line.js";
 import { createStore, memoryKv } from "../src/store.js";
 import { createBot, buildSystem, FALLBACK_REPLY, MODEL } from "../src/bot.js";
 import fs from "node:fs";
+import { parsePersona, MESSAGE_KEYS } from "../src/persona.js";
 
 const SECRET = "test-channel-secret";
 const sign = (body) => crypto.createHmac("sha256", SECRET).update(body).digest("base64");
@@ -265,9 +266,50 @@ test("persona: ไฟล์ว่างหรือไม่มี ใช้ค�
 });
 
 test("data/persona.md มีจริงและถูกส่งเข้า system prompt", async () => {
-  const persona = fs.readFileSync(new URL("../data/persona.md", import.meta.url), "utf8");
+  const persona = parsePersona(fs.readFileSync(new URL("../data/persona.md", import.meta.url), "utf8")).prompt;
   let sent;
   const answer = createBot({ coursesText: "C", personaText: persona, client: { messages: { parse: async (p) => { sent = p; return { stop_reason: "end_turn", parsed_output: { reply: "r", status: "answered" } }; } } } });
   await answer([], "q");
-  assert.ok(sent.system[0].text.includes("น้องคอร์ส"));
+  assert.ok(sent.system[0].text.includes("สมาร์ท"));
+});
+
+const personaFile = () => fs.readFileSync(new URL("../data/persona.md", import.meta.url), "utf8");
+
+test("persona.md จริง: แยกข้อความตายตัวครบ 4 ตัว และไม่ส่งส่วนนั้นให้ AI", () => {
+  const { prompt, messages } = parsePersona(personaFile());
+  assert.deepEqual(Object.keys(messages).sort(), [...MESSAGE_KEYS].sort());
+  assert.match(messages.welcome, /สมาร์ท/);
+  assert.ok(messages.welcome.includes("\n"), "welcome หลายบรรทัดต้องคงขึ้นบรรทัดใหม่");
+  assert.ok(!messages.welcome.includes("ห้ามเปลี่ยนชื่อหัวข้อย่อย"), "บรรทัดหมายเหตุ > ต้องไม่ติดมา");
+  assert.ok(!prompt.includes("ข้อความตายตัว"));
+  assert.ok(!prompt.includes("### welcome"));
+  assert.match(prompt, /ชื่อ: สมาร์ท/);
+  for (const m of Object.values(messages)) assert.match(m, /ครับ/, "persona ชายต้องลงท้ายครับ");
+});
+
+test("parsePersona: ไม่มีหัวข้อข้อความตายตัว / key แปลก / ข้อความว่าง", () => {
+  assert.deepEqual(parsePersona("# P\nhello"), { prompt: "# P\nhello", messages: {} });
+  const r = parsePersona("# P\n## ข้อความตายตัว\n### welcome\n\n### typo\nx\n### resumed\nกลับมาแล้ว\n## ท้าย\nend");
+  assert.deepEqual(r.messages, { resumed: "กลับมาแล้ว" });
+  assert.match(r.prompt, /ท้าย/);
+  assert.ok(!r.prompt.includes("typo"));
+});
+
+test("handler ใช้ข้อความตายตัวจาก persona ถ้ามี ไม่มีก็ใช้ค่าเริ่มต้น", async () => {
+  const a = setup();
+  a.deps.messages = { welcome: "สวัสดีจากสมาร์ท", nonText: "อ่านได้แต่ตัวอักษรครับ" };
+  await a.send([
+    { type: "follow", replyToken: "b", source: { type: "user", userId: "U1" } },
+    { type: "message", replyToken: "a", source: { type: "user", userId: "U1" }, message: { type: "image" } },
+  ]);
+  assert.deepEqual(a.replies.map((r) => r.text), ["สวัสดีจากสมาร์ท", "อ่านได้แต่ตัวอักษรครับ"]);
+
+  const b = setup();
+  await b.send([{ type: "follow", replyToken: "b", source: { type: "user", userId: "U1" } }]);
+  assert.equal(b.replies[0].text, TEXT.welcome);
+});
+
+test("bot ใช้ fallback จาก persona เมื่อ Claude พัง", async () => {
+  const bot = createBot({ coursesText: "x", fallbackReply: "สมาร์ทขัดข้องครับ", client: { messages: { parse: async () => { throw new Error("x"); } } } });
+  assert.equal((await bot([], "q")).reply, "สมาร์ทขัดข้องครับ");
 });

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { handleWebhook } from "../../src/handler.js";
 import { createLineClient } from "../../src/line.js";
 import { createBot } from "../../src/bot.js";
+import { parsePersona } from "../../src/persona.js";
 import { createStore, netlifyKv } from "../../src/store.js";
 
 export const config = { path: "/webhook" };
@@ -32,7 +33,9 @@ async function getDeps() {
   for (const name of ["LINE_CHANNEL_SECRET", "LINE_CHANNEL_ACCESS_TOKEN", "ANTHROPIC_API_KEY"]) {
     if (!env[name]) throw new Error(`ยังไม่ได้ตั้ง environment variable: ${name}`);
   }
+  const persona = parsePersona(readData("persona.md", { required: false }));
   deps = {
+    messages: persona.messages,
     channelSecret: env.LINE_CHANNEL_SECRET,
     adminGroupId: env.ADMIN_GROUP_ID || undefined,
     salt: env.HASH_SALT ?? "",
@@ -40,7 +43,8 @@ async function getDeps() {
     answer: createBot({
       apiKey: env.ANTHROPIC_API_KEY,
       coursesText: readData("courses.md", { required: true }),
-      personaText: readData("persona.md", { required: false }),
+      personaText: persona.prompt,
+      fallbackReply: persona.messages.fallback,
     }),
     store: createStore(await netlifyKv(), {
       historyTurns: Number(env.HISTORY_TURNS ?? 4),

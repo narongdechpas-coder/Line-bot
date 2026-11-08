@@ -37,7 +37,7 @@ export function buildSystem(coursesText, personaText) {
 export const FALLBACK_REPLY =
   "ขออภัยครับ ระบบตอบอัตโนมัติขัดข้องชั่วคราว แอดมินจะตอบกลับโดยเร็วที่สุดครับ";
 
-export function createBot({ apiKey, coursesText, personaText, timeoutMs = 7000, client }) {
+export function createBot({ apiKey, coursesText, personaText, fallbackReply = FALLBACK_REPLY, timeoutMs = 7000, client }) {
   const anthropic = client ?? new Anthropic({ apiKey });
   const system = buildSystem(coursesText, personaText);
 
@@ -59,7 +59,7 @@ export function createBot({ apiKey, coursesText, personaText, timeoutMs = 7000, 
       );
 
       if (response.stop_reason === "refusal" || !response.parsed_output) {
-        return { reply: FALLBACK_REPLY, status: "error", usage: response.usage };
+        return { reply: fallbackReply, status: "error", usage: response.usage };
       }
       return { ...response.parsed_output, usage: response.usage };
     } catch (err) {
@@ -70,7 +70,7 @@ export function createBot({ apiKey, coursesText, personaText, timeoutMs = 7000, 
       } else {
         console.error("Claude call failed:", err?.message ?? err);
       }
-      return { reply: FALLBACK_REPLY, status: "error" };
+      return { reply: fallbackReply, status: "error" };
     }
   };
 }
